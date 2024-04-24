@@ -1,0 +1,84 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Parameters:
+  StackName:
+    Type: String
+    Description: Name for the CloudFormation stack
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: Select the VPC for the load balancer and auto scaling group
+  Region:
+    Type: String
+    Description: Region where the VPC is located
+    Default: "us-east-1" # Change default region if needed
+    AllowedValues:
+      - "us-east-1"
+      - "us-west-1"
+      # Add more regions as needed
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Select subnets for the load balancer and auto scaling group
+Resources:
+  MySecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group allowing HTTP, HTTPS, and SSH connections
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Join ["", ["LB-", !Ref StackName]]
+      Subnets: !Ref SubnetIds
+      SecurityGroups:
+        - !Ref MySecurityGroup # Specify the security group ID or name here
+      Scheme: internet-facing
+      IpAddressType: ipv4
+      Tags:
+        - Key: Name
+          Value: !Join ["", ["LB-", !Ref StackName]]
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: TG-flutterDemoApp
+      VpcId: !Ref VpcId
+      Protocol: HTTP
+      Port: 80
+      HealthCheckPath: "/"
+      HealthCheckProtocol: HTTP
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: !Join ["", ["ASG-", !Ref StackName]]
+      LaunchTemplate:
+        LaunchTemplateName: "LT-flutterDemoApp"
+        Version: "4"
+      MinSize: 1
+      MaxSize: 2
+      DesiredCapacity: 1
+      VPCZoneIdentifier: !Ref SubnetIds
+      TargetGroupARNs:
+        - !Ref TargetGroup
+  DefaultSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Default security group for the VPC
+      VpcId: !Ref VpcId
+Outputs:
+  LoadBalancerDNS:
+    Description: DNS name of the load balancer
+    Value: !GetAtt LoadBalancer.DNSName
+  AutoScalingGroup:
+    Description: Name of the auto scaling group
+    Value: !Ref AutoScalingGroup

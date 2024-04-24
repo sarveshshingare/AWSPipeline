@@ -1,0 +1,202 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Parameters:
+  RepoName:
+    Type: String
+    Description: Name of the CodeCommit repository
+  ProjectName:
+    Type: String
+    Description: Name of the CodeBuild project
+  ServiceRoleNameBuild:
+    Type: String
+    Description: Name of the service role
+  PipelineName:
+    Type: String
+    Description: Name of the CodePipeline
+  ApplicationName:
+    Type: String
+    Description: Name of the CodeDeploy application
+  TargetGroupName:
+    Type: String
+    Description: Name of the target group for the Application Load Balancer
+  AutoScalingGroupName:
+    Type: String
+    Description: Name of the Auto Scaling Group for CodeDeploy
+  ServiceRoleNamePipeline:
+    Type: String
+    Description: Name of the service role
+  ArtifactBucketName:
+    Type: String
+    Description: Name of the Bucket to store artifacts from pipeline
+Resources:
+  CodeCommitRepo:
+    Type: AWS::CodeCommit::Repository
+    Properties:
+      RepositoryName: !Ref RepoName
+
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CodeBuildPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:GetBucketVersioning
+                  - s3:PutObject
+                Resource: "*"
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Ref ProjectName
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:4.0
+        EnvironmentVariables:
+          - Name: REPO_NAME
+            Value: !Ref RepoName
+          - Name: BRANCH_NAME
+            Value: master
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            install:
+              commands:
+                - echo Installing NGINX
+                - sudo apt-get update
+                - sudo apt-get install nginx -y
+
+            build:
+              commands:
+                - echo Build started on `date`
+                - cp index.html /var/www/html/
+
+            post_build:
+              commands:
+                - echo Configuring NGINX
+
+          artifacts:
+            files:
+              - "**/*"
+
+  CodeDeployApplication:
+    Type: AWS::CodeDeploy::Application
+    Properties:
+      ApplicationName: !Ref ApplicationName
+
+  CodeDeployDeploymentGroup:
+    Type: AWS::CodeDeploy::DeploymentGroup
+    Properties:
+      ApplicationName: !Ref CodeDeployApplication
+      DeploymentGroupName: !Join ["", [!Ref ApplicationName, "Group"]]
+      ServiceRoleArn: arn:aws:iam::743383154210:role/code-deploy-service-role
+      AutoScalingGroups:
+        - !Ref AutoScalingGroupName
+      LoadBalancerInfo:
+        TargetGroupInfoList:
+          - Name: !Ref TargetGroupName
+
+  CodePipelineServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref ServiceRoleNamePipeline
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CodePipelineServiceRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "codepipeline:CreatePipeline"
+                  - "codepipeline:GetPipeline"
+                  - "codepipeline:GetPipelineState"
+                  - "codepipeline:ListPipelines"
+                  - "codepipeline:StartPipelineExecution"
+                Resource: "*"
+  CodePipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: !Ref PipelineName
+      RoleArn: !GetAtt CodePipelineServiceRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactBucketName
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: SourceAction
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: 1
+                Provider: CodeCommit
+              Configuration:
+                RepositoryName: !Ref RepoName
+                BranchName: master
+              OutputArtifacts:
+                - Name: SourceOutput
+              RunOrder: 1
+        - Name: Build
+          Actions:
+            - Name: BuildAction
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref ProjectName
+              InputArtifacts:
+                - Name: SourceOutput
+              OutputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
+        - Name: Deploy
+          Actions:
+            - Name: DeployAction
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CodeDeploy
+              Configuration:
+                ApplicationName: !Ref ApplicationName
+                DeploymentGroupName: !Ref CodeDeployDeploymentGroup
+              InputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
+
+Outputs:
+  CodeCommitRepoURL:
+    Description: URL of the CodeCommit repository
+    Value: !GetAtt CodeCommitRepo.CloneUrlHttp
