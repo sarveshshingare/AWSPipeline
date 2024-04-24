@@ -1,7 +1,7 @@
 # AWSPipeline
 
 ## Overview
-This project demonstrates how to set up a continuous integration (CI) pipeline using AWS CodeBuild with an EC2 environment running Ubuntu. The pipeline is configured to automatically build and test code stored in a CodeCommit repository whenever changes are pushed.
+This project demonstrates how to set up a continuous integration (CI) pipeline using AWS CodeBuild with an EC2 environment running Ubuntu. The pipeline is configured to automatically build and test code stored in a CodeCommit repository whenever changes are pushed. Infrastructure and pipeline is launched by using cloudformation template. 
 
 ## Features
 - **Automated Builds**: The CI pipeline triggers automatically on code changes, ensuring that code is built and tested consistently.
@@ -11,21 +11,23 @@ This project demonstrates how to set up a continuous integration (CI) pipeline u
 
 ## Getting Started
 To get started with this project, follow these steps:
-
-1. **Clone the Repository**: Clone this repository to your local machine.
+1. **Launch Infrastructure**: use infrastructure.yml file to launch autoscaling group and load balancer 
+   ```bash
+   aws cloudformation create-stack --stack-name <stack-name> --template-body file://path/to/cloudformation-template.yaml --parameters ParameterKey=RepoName,ParameterValue=<repo-name> ParameterKey=ProjectName,ParameterValue=<project-name> --capabilities CAPABILITY_NAMED_IAM
+2. **Clone the Repository**: Clone this repository to your local machine.
    ```bash
    git clone <repository-url>
-2. **Install AWS CLI**: Install the AWS Command Line Interface (CLI) if you haven't already. You'll need it to interact with AWS services.
+3. **Install AWS CLI**: Install the AWS Command Line Interface (CLI) if you haven't already. You'll need it to interact with AWS services.
    ```bash
    # For example, using pip
    pip install awscli --upgrade --user
-3. **Configure AWS CLI**: Configure the AWS CLI with your AWS credentials.
+4. **Configure AWS CLI**: Configure the AWS CLI with your AWS credentials.
    ```bash
    aws configure
-4. **Deploy the CloudFormation Stack**: Deploy the provided CloudFormation template to set up the CodeBuild project and associated resources in your AWS account.
+5. **Deploy the CloudFormation Stack**: Deploy the provided CloudFormation template to set up the CodeBuild project and associated resources in your AWS account.
    ```bash
    aws cloudformation create-stack --stack-name <stack-name> --template-body file://path/to/cloudformation-template.yaml --parameters ParameterKey=RepoName,ParameterValue=<repo-name> ParameterKey=ProjectName,ParameterValue=<project-name> --capabilities CAPABILITY_NAMED_IAM
-5. **Push Code Changes**: Push changes to the CodeCommit repository to trigger the CI pipeline.
+6. **Push Code Changes**: Push changes to the CodeCommit repository to trigger the CI pipeline.
    ```bash
    git add .
    git commit -m "Add new feature"
